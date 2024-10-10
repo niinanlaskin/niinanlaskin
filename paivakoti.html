@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Päiväkodin henkilöstösuunnittelu</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 1400px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            overflow-x: auto;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 4px;
+            text-align: center;
+            font-size: 0.9em;
+        }
+        th {
+            background-color: #f2f2f2;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        input[type="number"] {
+            width: 40px;
+            text-align: center;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            margin: 10px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 1em;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .time-column {
+            position: sticky;
+            left: 0;
+            background-color: #f2f2f2;
+            z-index: 5;
+        }
+        .result-column {
+            background-color: #e6f3ff;
+        }
+        .highlight-green {
+            background-color: #ccffcc;
+        }
+        .highlight-red {
+            background-color: #ffcccc;
+        }
+        .highlight-yellow {
+            background-color: #ffffcc;
+        }
+        .controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .max-staff {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-top: 20px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Päiväkodin henkilöstösuunnittelu</h1>
+        <div class="controls">
+            <button onclick="resetAllValues()">Nollaa</button>
+            <span class="max-staff">Henkilöt max: <span id="maxStaff">1</span></span>
+        </div>
+        <table id="staffingTable">
+            <tr>
+                <th class="time-column">Aika</th>
+                <th>Alle 3v (1.75)</th>
+                <th>Yli 3v (1.0)</th>
+                <th>Esikoululaiset (0.5)</th>
+                <th class="result-column">Lapset yhteensä</th>
+                <th class="result-column">Kerroin yhteensä</th>
+                <th class="result-column">Tarvittava henkilöstö</th>
+            </tr>
+        </table>
+    </div>
+
+    <script>
+        const AGE_COEFFICIENTS = {
+            under3: 1.75,
+            over3: 1,
+            preschool: 0.5
+        };
+
+        const STAFF_CAPACITY = 7;
+
+        function createStaffingTable() {
+            const table = document.getElementById('staffingTable');
+            for (let hour = 6; hour <= 17; hour++) {
+                for (let minute = 0; minute < 60; minute += 15) {
+                    if (hour === 17 && minute > 0) break;
+
+                    const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                    const row = table.insertRow();
+                    row.innerHTML = `
+                        <td class="time-column">${time}</td>
+                        ${createInputCell('under3', time)}
+                        ${createInputCell('over3', time)}
+                        ${createInputCell('preschool', time)}
+                        <td class="result-column" id="totalChildren_${time}">0</td>
+                        <td class="result-column" id="totalCoefficient_${time}">0</td>
+                        <td class="result-column" id="staff_${time}">1</td>
+                    `;
+                }
+            }
+        }
+
+        function createInputCell(ageGroup, time) {
+            return `
+                <td>
+                    <button onclick="changeValue('${ageGroup}', '${time}', -1)">-</button>
+                    <input type="number" id="${ageGroup}_${time}" value="0" onchange="updateCalculations()" class="value-cell">
+                    <button onclick="changeValue('${ageGroup}', '${time}', 1)">+</button>
+                </td>
+            `;
+        }
+
+        function changeValue(ageGroup, time, change) {
+            const input = document.getElementById(`${ageGroup}_${time}`);
+            input.value = parseInt(input.value) + change;
+            updateCalculations();
+        }
+
+        function updateCalculations() {
+            let previousValues = { under3: 0, over3: 0, preschool: 0 };
+            let maxStaff = 1;
+
+            for (let hour = 6; hour <= 17; hour++) {
+                for (let minute = 0; minute < 60; minute += 15) {
+                    const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                    if (hour === 17 && minute > 0) break;
+
+                    const under3 = (parseInt(document.getElementById(`under3_${time}`).value) || 0) + previousValues.under3;
+                    const over3 = (parseInt(document.getElementById(`over3_${time}`).value) || 0) + previousValues.over3;
+                    const preschool = (parseInt(document.getElementById(`preschool_${time}`).value) || 0) + previousValues.preschool;
+
+                    const totalChildren = under3 + over3 + preschool;
+                    const totalCoefficient = under3 * AGE_COEFFICIENTS.under3 + over3 * AGE_COEFFICIENTS.over3 + preschool * AGE_COEFFICIENTS.preschool;
+                    const staffNeeded = Math.ceil(totalCoefficient / STAFF_CAPACITY);
+
+                    document.getElementById(`totalChildren_${time}`).textContent = totalChildren;
+                    document.getElementById(`totalCoefficient_${time}`).textContent = totalCoefficient.toFixed(2);
+                    document.getElementById(`staff_${time}`).textContent = staffNeeded;
+
+                    maxStaff = Math.max(maxStaff, staffNeeded);
+
+                    previousValues = { under3, over3, preschool };
+
+                    applyBackgroundColor(`under3_${time}`);
+                    applyBackgroundColor(`over3_${time}`);
+                    applyBackgroundColor(`preschool_${time}`);
+                }
+            }
+            document.getElementById('maxStaff').textContent = maxStaff;
+        }
+
+        function resetAllValues() {
+            const inputs = document.querySelectorAll('.value-cell');
+            inputs.forEach(input => input.value = 0);
+            updateCalculations();
+        }
+
+        function applyBackgroundColor(elementId) {
+            const element = document.getElementById(elementId);
+            const value = parseInt(element.value) || 0;
+            if (value > 0) {
+                element.className = 'value-cell highlight-green';
+            } else if (value === 0) {
+                element.className = 'value-cell highlight-yellow';
+            } else {
+                element.className = 'value-cell highlight-red';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            createStaffingTable();
+            updateCalculations();
+        });
+    </script>
+</body>
+</html>
